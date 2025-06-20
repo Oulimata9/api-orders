@@ -13,11 +13,18 @@ class Product(BaseModel):
 
 # Schéma d'entrée pour créer une commande
 class OrderCreate(BaseModel):
-    customer_id: Optional[str] = Field(..., alias="customerId")
+    customer_id: str = Field(..., alias="customerId")
     products: List[Product]
 
+    class Config:
+        populate_by_name = True
+
 # Schéma de sortie pour afficher une commande
-class OrderOut(OrderCreate):
+class OrderOut(BaseModel):
+    customer_id: str = Field(..., alias="customerId")
+    products: List[Product]
     id: str
     createdAt: Optional[datetime]
 
+    class Config:
+        populate_by_name = True

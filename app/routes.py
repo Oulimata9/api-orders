@@ -6,18 +6,17 @@ from app.event_bus import publish_event
 import json
 from datetime import datetime
 from typing import List
-
+from app.event_bus import publish_event
 
 router = APIRouter()
 
-# URL MockAPI pour les commandes
 ORDERS_URL = "https://615f5fb4f7254d0017068109.mockapi.io/api/v1/orders"
 
-# Fonction pour convertir datetime en format JSON
 def json_serial(obj):
     if isinstance(obj, datetime):
         return obj.isoformat()
     raise TypeError(f"Type non sérialisable : {type(obj)}")
+
 
 @router.post("/", response_model=OrderOut)
 def create_order(order: OrderCreate):
@@ -25,10 +24,11 @@ def create_order(order: OrderCreate):
 
     try:
         response = requests.post(
-            ORDERS_URL,
-            data=json.dumps(order.dict(), default=json_serial),
-            headers={"Content-Type": "application/json"}
-        )
+        ORDERS_URL,
+        json=jsonable_encoder(order),
+        headers={"Content-Type": "application/json"}
+    )
+
     except Exception as e:
         print("ERREUR :", e)
         raise HTTPException(status_code=500, detail="Erreur lors de l'envoi de la commande")
@@ -38,17 +38,20 @@ def create_order(order: OrderCreate):
         raise HTTPException(status_code=500, detail="Erreur lors de la création de la commande")
 
     created_order = response.json()
-    publish_event(created_order)
+
+    # Envoie d’un message RabbitMQ avec routing key explicite
+    publish_event("orders.created", created_order)
+
     return created_order
-    
+
+
+
 @router.get("/", response_model=List[OrderOut])
 def read_orders():
     response = requests.get(ORDERS_URL)
     if response.status_code != 200:
         raise HTTPException(status_code=500, detail="Erreur lors de la récupération des commandes")
-
-    data = response.json()
-    return data  # FastAPI fera la validation avec les alias
+    return response.json()
 
 
 @router.get("/{order_id}", response_model=OrderOut)
@@ -60,7 +63,7 @@ def read_order(order_id: str):
         raise HTTPException(status_code=500, detail="Erreur lors de la récupération de la commande")
     return response.json()
 
-# NOUVELLE ROUTE : modifier une commande
+
 @router.put("/{order_id}", response_model=OrderOut)
 def update_order(order_id: str, order: OrderCreate):
     print("MODIFICATION DEMANDÉE POUR :", order_id)
@@ -78,16 +81,19 @@ def update_order(order_id: str, order: OrderCreate):
         raise HTTPException(status_code=500, detail="Erreur lors de la modification de la commande")
 
     updated_order = response.json()
-    publish_event(updated_order)
+
+    # Message RabbitMQ pour modification
+    publish_event("orders.updated", updated_order)
+
     return updated_order
+   
+
 
 @router.delete("/{order_id}")
 def delete_order(order_id: str):
-    # Vérifie si la commande existe
     response = requests.get(f"{ORDERS_URL}/{order_id}")
     if response.status_code == 404:
         raise HTTPException(status_code=404, detail="Commande non trouvée")
 
-    # Simule la suppression
     print(f"SIMULATION : Commande {order_id} supprimée")
     return {"message": f"Commande {order_id} (simulée comme supprimée)"}
